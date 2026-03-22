@@ -280,7 +280,7 @@ input:focus,select:focus{border-color:#4a7c59;background:#fff}
 
   <div id="sp-atencion" class="hidden">
     <div class="card">
-      <div class="card-title">% Atención de salón — equipo</div>
+      <div class="card-title">Carga del día</div>
       <div style="display:flex;align-items:flex-end;gap:16px;margin-bottom:16px">
         <div>
           <div class="big-pct c-danger" id="team-big">—</div>
@@ -295,7 +295,15 @@ input:focus,select:focus{border-color:#4a7c59;background:#fff}
         <div class="fgroup"><label>Tickets atendidos</label><input type="number" id="s-atend" placeholder="0" min="0" inputmode="numeric" oninput="updAtencion()" /></div>
         <div class="fgroup"><label>Tickets ingresados al local</label><input type="number" id="s-ingr" placeholder="0" min="0" inputmode="numeric" oninput="updAtencion()" /></div>
       </div>
-      <div class="section-note">% = atendidos ÷ ingresados. Este objetivo es grupal e independiente del objetivo de tickets individual de cada vendedor.</div>
+      <div class="section-note">% = atendidos ÷ ingresados. Meta grupal: 65%.</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Promedios por tipo de día</div>
+      <div id="aten-promedios"><div class="loading"><div class="sp"></div></div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Historial completo</div>
+      <div id="aten-hist-table"><div class="loading"><div class="sp"></div></div></div>
     </div>
   </div>
 
@@ -501,6 +509,21 @@ async function loadAten(date){
   return C.atencion[date];
 }
 
+async function loadAtenHistory(){
+  try{
+    const {data,error}=await db.from('team_atencion').select('*').order('date',{ascending:false});
+    if(error) throw error;
+    const rows=data||[];
+    rows.forEach(r=>{ C.atencion[r.date]=r; });
+    lss('ft_c_aten_hist',rows);
+    return rows;
+  }catch(e){
+    const cached=lsg('ft_c_aten_hist')||[];
+    cached.forEach(r=>{ C.atencion[r.date]=r; });
+    return cached;
+  }
+}
+
 async function loadConfig(){
   try{
     const {data,error}=await db.from('config').select('*');
@@ -610,7 +633,7 @@ async function checkPin(){
 // ─── VENDOR DATA LOAD ────────────────────────────────────────────────────────
 async function loadVendedorData(s){
   const tasks=[loadSales(s,DATEKEY),loadTotal(s,DATEKEY)];
-  for(let i=1;i<=6;i++){
+  for(let i=1;i<=364;i++){
     const d=new Date(TODAY); d.setDate(d.getDate()-i);
     const dk=d.toISOString().split('T')[0];
     tasks.push(loadSales(s,dk),loadTotal(s,dk));
@@ -638,7 +661,7 @@ function motMsg(p){
 
 function getStreak(s){
   let streak=0;
-  for(let i=0;i<60;i++){
+  for(let i=0;i<365;i++){
     const d=new Date(TODAY); d.setDate(d.getDate()-i);
     const dk=d.toISOString().split('T')[0];
     const dow=d.getDay();
@@ -882,10 +905,79 @@ async function renderResumen(){
 }
 
 async function renderAtencion(){
-  const aten=await loadAten(DATEKEY);
+  const [aten, hist] = await Promise.all([loadAten(DATEKEY), loadAtenHistory()]);
   document.getElementById('s-atend').value=aten?aten.atendidos:'';
   document.getElementById('s-ingr').value=aten?aten.ingresados:'';
   updAtencion(false);
+  renderAtenPromedios(hist);
+  renderAtenHistTable(hist);
+}
+
+function renderAtenPromedios(hist){
+  const groups={semana:[],sabado:[],domingo:[]};
+  hist.forEach(r=>{
+    const dow=new Date(r.date+'T12:00:00').getDay();
+    const pct=r.ingresados>0?Math.round((r.atendidos/r.ingresados)*100):null;
+    if(pct===null) return;
+    if(dow===6) groups.sabado.push(pct);
+    else if(dow===0) groups.domingo.push(pct);
+    else groups.semana.push(pct);
+  });
+  const avg=arr=>arr.length?Math.round(arr.reduce((a,b)=>a+b,0)/arr.length):null;
+  const avgSem=avg(groups.semana), avgSab=avg(groups.sabado), avgDom=avg(groups.domingo);
+  const allPcts=[...groups.semana,...groups.sabado,...groups.domingo];
+  const avgTotal=avg(allPcts);
+  function statRow(label,val,n){
+    if(val===null) return `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(0,0,0,0.06)"><span style="font-size:13px;color:#6b6b6b">${label}</span><span style="font-size:13px;color:#9b9b9b">sin datos</span></div>`;
+    const cls=val>=65?'c-good':val>=50?'c-warn':'c-danger';
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(0,0,0,0.06)">
+      <div><span style="font-size:13px;color:#1a1a1a;font-weight:600">${label}</span><span style="font-size:11px;color:#9b9b9b;margin-left:6px">${n} día${n!==1?'s':''}</span></div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:80px;height:6px;background:#f0efe9;border-radius:3px;overflow:hidden"><div style="height:100%;width:${Math.min(100,val)}%;background:${val>=65?'#22c55e':val>=50?'#f59e0b':'#d1d5db'};border-radius:3px"></div></div>
+        <span style="font-size:14px;font-weight:700;min-width:38px;text-align:right" class="${cls}">${val}%</span>
+      </div>
+    </div>`;
+  }
+  document.getElementById('aten-promedios').innerHTML=`
+    ${statRow('Promedio general',avgTotal,allPcts.length)}
+    ${statRow('Lun – vie',avgSem,groups.semana.length)}
+    ${statRow('Sábados',avgSab,groups.sabado.length)}
+    ${statRow('Domingos',avgDom,groups.domingo.length)}
+    <div style="font-size:11px;color:#9b9b9b;margin-top:8px">Meta: 65% · Basado en los últimos ${hist.length} días registrados</div>`;
+}
+
+function renderAtenHistTable(hist){
+  if(!hist.length){
+    document.getElementById('aten-hist-table').innerHTML='<div class="empty">Sin historial todavía. Cargá la atención de hoy para empezar.</div>';
+    return;
+  }
+  const dayNames=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const rows=hist.map(r=>{
+    const pct=r.ingresados>0?Math.round((r.atendidos/r.ingresados)*100):null;
+    const cls=pct!==null?(pct>=65?'c-good':pct>=50?'c-warn':'c-danger'):'';
+    const dow=new Date(r.date+'T12:00:00').getDay();
+    const [y,m,d]=r.date.split('-');
+    const dateLabel=`${dayNames[dow]} ${d}/${m}`;
+    const isToday=r.date===DATEKEY;
+    return `<tr style="${isToday?'background:#f0efe9;':''}">
+      <td style="padding:8px 6px;font-size:13px;color:${isToday?'#1a1a1a':'#6b6b6b'};font-weight:${isToday?'700':'400'}">${dateLabel}${isToday?' <span style="font-size:10px;color:#9b9b9b">hoy</span>':''}</td>
+      <td style="padding:8px 6px;font-size:13px;text-align:right;color:#1a1a1a">${r.atendidos}</td>
+      <td style="padding:8px 6px;font-size:13px;text-align:right;color:#1a1a1a">${r.ingresados}</td>
+      <td style="padding:8px 6px;font-size:13px;text-align:right;font-weight:700" class="${cls}">${pct!==null?pct+'%':'—'}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('aten-hist-table').innerHTML=`
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr>
+          <th style="text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#9b9b9b;padding:0 6px 8px;font-weight:600">Fecha</th>
+          <th style="text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#9b9b9b;padding:0 6px 8px;font-weight:600">Atend.</th>
+          <th style="text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#9b9b9b;padding:0 6px 8px;font-weight:600">Ingres.</th>
+          <th style="text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#9b9b9b;padding:0 6px 8px;font-weight:600">%</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
 }
 
 let atenTmr;
