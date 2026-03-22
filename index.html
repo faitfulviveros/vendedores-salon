@@ -1461,21 +1461,25 @@ function processImport(rows){
     if(!fecha) return;
     const dk=(()=>{
       if(!fecha && fecha!==0) return null;
-      // raw:true with cellDates:true → Date object
       if(fecha instanceof Date){
-        return fecha.toISOString().substring(0,10);
+        // Use local date parts to avoid UTC shift
+        const y=fecha.getFullYear();
+        const m=String(fecha.getMonth()+1).padStart(2,'0');
+        const d=String(fecha.getDate()).padStart(2,'0');
+        return `${y}-${m}-${d}`;
       }
-      // raw:true without cellDates → Excel serial number
       if(typeof fecha==='number'){
         const d=new Date(Math.round((fecha-25569)*86400*1000));
         return d.toISOString().substring(0,10);
       }
-      // string fallback
-      const parts=fecha.toString().split(/[\/\-]/);
-      if(parts.length===3&&parseInt(parts[0])>12){
+      // string: take first 10 chars (handles "2026-03-18 11:11:56" and "18/03/2026")
+      const s=fecha.toString().trim();
+      if(s.match(/^\d{4}-\d{2}-\d{2}/)) return s.substring(0,10);
+      const parts=s.split(/[\/\-\s]/);
+      if(parts.length>=3&&parseInt(parts[0])>12){
         return `${parts[2].substring(0,4)}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
       }
-      return fecha.toString().substring(0,10);
+      return s.substring(0,10);
     })();
     if(!dk) return;
     if(!atenByDate[dk]) atenByDate[dk]={atendidos:0,ingresados:0};
