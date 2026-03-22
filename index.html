@@ -223,6 +223,7 @@ input:focus,select:focus{border-color:#4a7c59;background:#fff}
   <div id="nowork-banner" class="nowork-banner hidden"></div>
   <div class="mgrid hidden" id="v-mgrid"></div>
   <div id="v-progs" class="hidden"></div>
+  <div id="v-abc" class="hidden" style="margin-bottom:14px"></div>
   <div style="margin-bottom:14px">
     <div class="slabel">Últimos 7 días — venta neta</div>
     <div class="hist-bars" id="hist-bars"></div>
@@ -327,8 +328,23 @@ input:focus,select:focus{border-color:#4a7c59;background:#fff}
           <input type="date" id="hist-to" onchange="renderHistorial()" />
         </div>
       </div>
-      <div id="hist-summary" class="hidden" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px"></div>
-      <div id="hist-table-wrap"><div class="empty">Elegí un vendedor para ver su historial.</div></div>
+      <div id="hist-empty" class="empty">Elegí un vendedor para ver su historial.</div>
+      <!-- KPIs -->
+      <div id="hist-kpis" class="hidden" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px"></div>
+      <!-- Week comparison -->
+      <div id="hist-week-comp" class="hidden" style="margin-bottom:14px"></div>
+      <!-- Bar chart -->
+      <div id="hist-chart-wrap" class="hidden" style="margin-bottom:14px">
+        <div class="slabel" style="margin-bottom:8px">Venta neta — últimos 30 días</div>
+        <div id="hist-bars-chart" style="display:flex;gap:3px;align-items:flex-end;height:80px"></div>
+        <div id="hist-bars-labels" style="display:flex;gap:3px;margin-top:4px"></div>
+      </div>
+      <!-- Obj compliance -->
+      <div id="hist-obj-wrap" class="hidden" style="margin-bottom:14px"></div>
+      <!-- Correlation -->
+      <div id="hist-corr-wrap" class="hidden" style="margin-bottom:14px"></div>
+      <!-- Table -->
+      <div id="hist-table-wrap"></div>
     </div>
   </div>
   <div id="sp-vendedores" class="hidden">
@@ -776,24 +792,74 @@ function renderHist(s){
   }).join('');
 }
 
+// ─── ABC CLASSIFICATION ──────────────────────────────────────────────────────
+const ABC_A = 100000; // neto
+const ABC_B = 40000;  // neto
+function abcClass(netoAmt){
+  if(netoAmt>=ABC_A) return 'A';
+  if(netoAmt>=ABC_B) return 'B';
+  return 'C';
+}
+const ABC_COLORS={A:{bg:'#dcfce7',color:'#15803d',border:'#86efac'},B:{bg:'#fef9c3',color:'#854d0e',border:'#fde047'},C:{bg:'#f1f5f9',color:'#475569',border:'#cbd5e1'}};
+
+function renderABC(sales){
+  const abcEl=document.getElementById('v-abc');
+  if(!sales||!sales.length){ abcEl.classList.add('hidden'); return; }
+  const groups={A:{count:0,total:0},B:{count:0,total:0},C:{count:0,total:0}};
+  sales.forEach(s=>{
+    const n=neto(s.amount);
+    const cls=abcClass(n);
+    groups[cls].count++;
+    groups[cls].total+=n;
+  });
+  const total=sales.reduce((a,s)=>a+neto(s.amount),0);
+  abcEl.classList.remove('hidden');
+  abcEl.innerHTML=`
+    <div class="slabel" style="margin-bottom:8px">Estructura de venta hoy</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+      ${['A','B','C'].map(cls=>{
+        const g=groups[cls];
+        const pct=total>0?Math.round((g.total/total)*100):0;
+        const c=ABC_COLORS[cls];
+        const label=cls==='A'?'> $100k':cls==='B'?'$40k–$100k':'< $40k';
+        return `<div style="background:${c.bg};border:1.5px solid ${c.border};border-radius:14px;padding:12px;text-align:center">
+          <div style="font-size:20px;font-weight:800;color:${c.color}">${cls}</div>
+          <div style="font-size:11px;color:${c.color};font-weight:600;margin-bottom:6px">${label}</div>
+          <div style="font-size:18px;font-weight:700;color:#1a1a1a">${g.count}</div>
+          <div style="font-size:11px;color:#6b6b6b">ticket${g.count!==1?'s':''}</div>
+          <div style="font-size:12px;font-weight:700;color:${c.color};margin-top:4px">${pct}%</div>
+          <div style="font-size:10px;color:#9b9b9b">${fmt(g.total)}</div>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
 function renderTickets(s){
   const k=ck(s,DATEKEY);
   const dt=C.totals[k];
   const sales=C.sales[k]||[];
   const tl=document.getElementById('tlist');
+  // render ABC
+  renderABC(dt?null:sales);
   if(dt){
-    tl.innerHTML=`<div class="empty">Carga total activa: ${fmt(dt.total_venta)} neto · ${dt.total_tickets} tickets</div>`;
+    tl.innerHTML=`<div class="empty">Carga total activa: ${fmt(dt.total_venta)} neto · ${dt.total_tickets} tickets<br><span style="font-size:11px;color:#9b9b9b">Estructura A/B/C no disponible en carga total</span></div>`;
     return;
   }
   if(!sales.length){ tl.innerHTML='<div class="empty">Sin ventas cargadas todavía</div>'; return; }
-  tl.innerHTML=[...sales].reverse().map(s=>`
-    <div class="trow">
+  tl.innerHTML=[...sales].reverse().map(s=>{
+    const n=neto(s.amount);
+    const cls=abcClass(n);
+    const c=ABC_COLORS[cls];
+    return `<div class="trow">
+      <span style="font-size:11px;font-weight:800;color:${c.color};background:${c.bg};border:1px solid ${c.border};border-radius:6px;padding:2px 6px;flex-shrink:0">${cls}</span>
       <span class="ttime">${fmtT(s.created_at)}</span>
-      <span class="tamt">${fmt(neto(s.amount))}</span>
+      <span class="tamt">${fmt(n)}</span>
       <span class="tnote">${s.note||''}<span style="color:#ccc;font-size:10px;margin-left:4px">+IVA ${fmt(s.amount)}</span></span>
       <button class="tdel" onclick="delSale('${s.id}')">×</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
+
 
 // ─── VENDOR ACTIONS ──────────────────────────────────────────────────────────
 async function addSale(){
@@ -1048,49 +1114,152 @@ async function renderHistorial(){
   const seller=document.getElementById('hist-seller-sel').value;
   const from=document.getElementById('hist-from').value;
   const to=document.getElementById('hist-to').value;
-  if(!seller){ document.getElementById('hist-table-wrap').innerHTML='<div class="empty">Elegí un vendedor para ver su historial.</div>'; document.getElementById('hist-summary').classList.add('hidden'); return; }
+  const ids=['hist-kpis','hist-week-comp','hist-chart-wrap','hist-obj-wrap','hist-corr-wrap'];
+  if(!seller){
+    document.getElementById('hist-empty').classList.remove('hidden');
+    ids.forEach(id=>{ const el=document.getElementById(id); el.classList.add('hidden'); el.style.display='none'; });
+    document.getElementById('hist-table-wrap').innerHTML='';
+    return;
+  }
+  document.getElementById('hist-empty').classList.add('hidden');
   document.getElementById('hist-table-wrap').innerHTML='<div class="loading"><div class="sp"></div>Cargando...</div>';
 
-  // load from supabase
   let sales=[], totals=[];
-  try{
-    const {data:sd}=await db.from('sales').select('*').eq('seller_name',seller).gte('date',from).lte('date',to).order('date',{ascending:false});
-    sales=sd||[];
-  }catch(e){}
-  try{
-    const {data:td}=await db.from('daily_totals').select('*').eq('seller_name',seller).gte('date',from).lte('date',to).order('date',{ascending:false});
-    totals=td||[];
-  }catch(e){}
+  try{ const {data:sd}=await db.from('sales').select('*').eq('seller_name',seller).gte('date',from).lte('date',to).order('date',{ascending:false}); sales=sd||[]; }catch(e){}
+  try{ const {data:td}=await db.from('daily_totals').select('*').eq('seller_name',seller).gte('date',from).lte('date',to).order('date',{ascending:false}); totals=td||[]; }catch(e){}
 
-  // build day map
+  // also load prev period for comparison
+  const fromD=new Date(from), toD=new Date(to);
+  const diffMs=toD-fromD;
+  const prevTo=new Date(fromD); prevTo.setDate(prevTo.getDate()-1);
+  const prevFrom=new Date(prevTo); prevFrom.setTime(prevTo.getTime()-diffMs);
+  const prevFromStr=prevFrom.toISOString().split('T')[0];
+  const prevToStr=prevTo.toISOString().split('T')[0];
+  let prevTotals=[];
+  try{ const {data:pt}=await db.from('daily_totals').select('*').eq('seller_name',seller).gte('date',prevFromStr).lte('date',prevToStr); prevTotals=pt||[]; }catch(e){}
+  let prevSales=[];
+  try{ const {data:ps}=await db.from('sales').select('*').eq('seller_name',seller).gte('date',prevFromStr).lte('date',prevToStr); prevSales=ps||[]; }catch(e){}
+
+  // build day map current
   const dayMap={};
-  totals.forEach(t=>{ dayMap[t.date]={venta:t.total_venta||0,tickets:t.total_tickets||0,isTotal:true}; });
-  sales.forEach(s=>{
-    if(!dayMap[s.date]) dayMap[s.date]={venta:0,tickets:0,isTotal:false};
-    if(!dayMap[s.date].isTotal){ dayMap[s.date].venta+=neto(s.amount); dayMap[s.date].tickets+=1; }
-  });
-
+  totals.forEach(t=>{ dayMap[t.date]={venta:t.total_venta||0,tickets:t.total_tickets||0,isTotal:true,abc:null}; });
+  sales.forEach(s=>{ if(!dayMap[s.date]) dayMap[s.date]={venta:0,tickets:0,isTotal:false,abc:{A:{count:0,total:0},B:{count:0,total:0},C:{count:0,total:0}}}; if(!dayMap[s.date].isTotal){ dayMap[s.date].venta+=neto(s.amount); dayMap[s.date].tickets+=1; const cls=abcClass(neto(s.amount)); dayMap[s.date].abc[cls].count++; dayMap[s.date].abc[cls].total+=neto(s.amount); } });
   const days=Object.keys(dayMap).sort().reverse();
+
+  // build prev map
+  const prevMap={};
+  prevTotals.forEach(t=>{ prevMap[t.date]={venta:t.total_venta||0,tickets:t.total_tickets||0}; });
+  prevSales.forEach(s=>{ if(!prevMap[s.date]) prevMap[s.date]={venta:0,tickets:0}; prevMap[s.date].venta+=neto(s.amount); prevMap[s.date].tickets+=1; });
+
   if(!days.length){
+    ids.forEach(id=>{ const el=document.getElementById(id); el.classList.add('hidden'); el.style.display='none'; });
     document.getElementById('hist-table-wrap').innerHTML='<div class="empty">Sin datos para ese período.</div>';
-    document.getElementById('hist-summary').classList.add('hidden');
     return;
   }
 
-  // summary
   const totalVenta=days.reduce((a,d)=>a+dayMap[d].venta,0);
   const totalTickets=days.reduce((a,d)=>a+dayMap[d].tickets,0);
   const avgTicket=totalTickets>0?Math.round(totalVenta/totalTickets):0;
-  const sumEl=document.getElementById('hist-summary');
-  sumEl.classList.remove('hidden');
-  sumEl.style.display='grid';
-  sumEl.innerHTML=`
-    <div class="mcard"><div class="mlabel">Venta total</div><div class="mval" style="font-size:16px">${fmt(totalVenta)}</div><div class="msub">${days.length} días</div></div>
-    <div class="mcard"><div class="mlabel">Tickets totales</div><div class="mval" style="font-size:16px">${totalTickets}</div><div class="msub">en el período</div></div>
-    <div class="mcard"><div class="mlabel">Tkt promedio</div><div class="mval" style="font-size:16px">${totalTickets>0?fmt(avgTicket):'—'}</div><div class="msub">neto</div></div>`;
+  const prevVenta=Object.values(prevMap).reduce((a,v)=>a+v.venta,0);
+  const prevTickets=Object.values(prevMap).reduce((a,v)=>a+v.tickets,0);
 
-  // table
+  // ── KPIs ──
+  const ventaDiff=prevVenta>0?Math.round(((totalVenta-prevVenta)/prevVenta)*100):null;
+  const tktDiff=prevTickets>0?Math.round(((totalTickets-prevTickets)/prevTickets)*100):null;
+  const kpisEl=document.getElementById('hist-kpis');
+  kpisEl.classList.remove('hidden'); kpisEl.style.display='grid';
+  kpisEl.innerHTML=`
+    <div class="mcard"><div class="mlabel">Venta neta total</div><div class="mval" style="font-size:17px">${fmt(totalVenta)}</div><div class="msub">${ventaDiff!==null?`${ventaDiff>=0?'+':''}${ventaDiff}% vs período ant.`:''}</div></div>
+    <div class="mcard"><div class="mlabel">Tickets totales</div><div class="mval" style="font-size:17px">${totalTickets}</div><div class="msub">${tktDiff!==null?`${tktDiff>=0?'+':''}${tktDiff}% vs período ant.`:''}</div></div>
+    <div class="mcard"><div class="mlabel">Ticket promedio</div><div class="mval" style="font-size:17px">${totalTickets>0?fmt(avgTicket):'—'}</div><div class="msub">neto</div></div>
+    <div class="mcard"><div class="mlabel">Días trabajados</div><div class="mval" style="font-size:17px">${days.length}</div><div class="msub">con al menos 1 venta</div></div>`;
+
+  // ── OBJ COMPLIANCE ──
   const dnames=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  let cumplidos=0, nocumplidos=0;
+  days.forEach(d=>{
+    const dow=new Date(d+'T12:00:00').getDay();
+    const dt=getDT(dow);
+    const obj=getObj(seller,dt);
+    const v=dayMap[d];
+    if(v.venta>=obj.venta&&v.tickets>=obj.tickets) cumplidos++;
+    else nocumplidos++;
+  });
+  const pctCump=days.length>0?Math.round((cumplidos/days.length)*100):0;
+  const objEl=document.getElementById('hist-obj-wrap');
+  objEl.classList.remove('hidden'); objEl.style.display='block';
+  objEl.innerHTML=`
+    <div class="slabel" style="margin-bottom:8px">Cumplimiento de objetivo</div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="flex:1;height:10px;background:#f0efe9;border-radius:5px;overflow:hidden">
+        <div style="height:100%;width:${pctCump}%;background:${pctCump>=70?'#22c55e':pctCump>=50?'#f59e0b':'#d1d5db'};border-radius:5px;transition:width .4s"></div>
+      </div>
+      <span style="font-size:14px;font-weight:700;min-width:36px;text-align:right" class="${pctCump>=70?'c-good':pctCump>=50?'c-warn':'c-danger'}">${pctCump}%</span>
+    </div>
+    <div style="display:flex;gap:16px;margin-top:8px">
+      <div style="font-size:12px;color:#15803d;font-weight:600">✓ ${cumplidos} días cumplió</div>
+      <div style="font-size:12px;color:#991b1b;font-weight:600">✗ ${nocumplidos} días no llegó</div>
+    </div>`;
+
+  // ── BAR CHART (last 30 days sorted ascending) ──
+  const chartDays=[...days].slice(0,30).reverse();
+  const maxVenta=Math.max(...chartDays.map(d=>dayMap[d].venta),1);
+  const chartEl=document.getElementById('hist-chart-wrap');
+  chartEl.classList.remove('hidden'); chartEl.style.display='block';
+  document.getElementById('hist-bars-chart').innerHTML=chartDays.map(d=>{
+    const v=dayMap[d];
+    const dow=new Date(d+'T12:00:00').getDay();
+    const dt=getDT(dow);
+    const obj=getObj(seller,dt);
+    const h=Math.max(4,Math.round((v.venta/maxVenta)*76));
+    const col=v.venta>=obj.venta?'#22c55e':v.venta>=obj.venta*0.6?'#f59e0b':'#d1d5db';
+    const [,m,day]=d.split('-');
+    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px">
+      <div style="width:100%;height:${h}px;background:${col};border-radius:3px 3px 0 0;min-height:4px" title="${day}/${m}: ${fmt(v.venta)}"></div>
+    </div>`;
+  }).join('');
+  // labels every ~5 days
+  document.getElementById('hist-bars-labels').innerHTML=chartDays.map((d,i)=>{
+    const [,m,day]=d.split('-');
+    const show=i===0||i===chartDays.length-1||(i+1)%5===0;
+    return `<div style="flex:1;font-size:9px;color:#9b9b9b;text-align:center">${show?`${day}/${m}`:''}</div>`;
+  }).join('');
+
+  // ── CORRELATION tickets vs venta ──
+  const corrEl=document.getElementById('hist-corr-wrap');
+  corrEl.classList.remove('hidden'); corrEl.style.display='block';
+  // group by ticket buckets
+  const buckets={};
+  days.forEach(d=>{
+    const v=dayMap[d];
+    if(v.tickets===0) return;
+    const bucket=Math.floor(v.tickets/5)*5; // 0-4, 5-9, 10-14...
+    const key=`${bucket}-${bucket+4}`;
+    if(!buckets[key]) buckets[key]={ventas:[],count:0,minT:bucket};
+    buckets[key].ventas.push(v.venta);
+    buckets[key].count++;
+  });
+  const sortedBuckets=Object.entries(buckets).sort((a,b)=>a[1].minT-b[1].minT);
+  const maxAvgVenta=Math.max(...sortedBuckets.map(([,b])=>b.ventas.reduce((a,v)=>a+v,0)/b.ventas.length),1);
+  corrEl.innerHTML=`
+    <div class="slabel" style="margin-bottom:8px">Correlación tickets → venta neta promedio</div>
+    <div style="font-size:12px;color:#9b9b9b;margin-bottom:10px">Días agrupados por cantidad de tickets atendidos</div>
+    ${sortedBuckets.map(([key,b])=>{
+      const avg=Math.round(b.ventas.reduce((a,v)=>a+v,0)/b.ventas.length);
+      const w=Math.round((avg/maxAvgVenta)*100);
+      return `<div style="margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+          <span style="color:#1a1a1a;font-weight:600">${key} tickets <span style="color:#9b9b9b;font-weight:400">(${b.count} día${b.count!==1?'s':''})</span></span>
+          <span style="font-weight:700">${fmt(avg)}</span>
+        </div>
+        <div style="height:7px;background:#f0efe9;border-radius:4px;overflow:hidden">
+          <div style="height:100%;width:${w}%;background:#3b82f6;border-radius:4px"></div>
+        </div>
+      </div>`;
+    }).join('')}
+    <div style="font-size:11px;color:#9b9b9b;margin-top:6px">Más tickets → ${sortedBuckets.length>1&&sortedBuckets[sortedBuckets.length-1][1].ventas.reduce((a,v)=>a+v,0)/sortedBuckets[sortedBuckets.length-1][1].ventas.length > sortedBuckets[0][1].ventas.reduce((a,v)=>a+v,0)/sortedBuckets[0][1].ventas.length?'mayor venta ✓':'no necesariamente mayor venta — revisá la estrategia'}</div>`;
+
+  // ── TABLE ──
   const rows=days.map(d=>{
     const v=dayMap[d];
     const dow=new Date(d+'T12:00:00').getDay();
@@ -1098,26 +1267,33 @@ async function renderHistorial(){
     const obj=getObj(seller,dt);
     const pV=obj.venta>0?Math.min(100,Math.round((v.venta/obj.venta)*100)):0;
     const pT=obj.tickets>0?Math.min(100,Math.round((v.tickets/obj.tickets)*100)):0;
-    const [y,m,day]=d.split('-');
-    const isToday=d===DATEKEY;
-    return `<tr style="${isToday?'background:#f0efe9;':''}">
-      <td style="padding:8px 6px;font-size:13px;color:${isToday?'#1a1a1a':'#6b6b6b'};font-weight:${isToday?'700':'400'}">${dnames[dow]} ${day}/${m}</td>
+    const [,m,day]=d.split('-');
+    const ok=v.venta>=obj.venta&&v.tickets>=obj.tickets;
+    const abcHtml=v.abc?['A','B','C'].map(cls=>{
+      const g=v.abc[cls]; const c=ABC_COLORS[cls];
+      return `<span style="font-size:10px;font-weight:700;color:${c.color};background:${c.bg};border:1px solid ${c.border};border-radius:4px;padding:1px 5px;margin-left:3px">${cls}:${g.count}</span>`;
+    }).join(''):'<span style="font-size:10px;color:#9b9b9b">carga total</span>';
+    return `<tr style="${d===DATEKEY?'background:#f0efe9;':''}">
+      <td style="padding:8px 6px;font-size:13px">
+        <div style="font-weight:600;color:${d===DATEKEY?'#1a1a1a':'#6b6b6b'}">${dnames[dow]} ${day}/${m} ${ok?'✓':''}</div>
+        <div style="margin-top:3px">${abcHtml}</div>
+      </td>
       <td style="padding:8px 6px;font-size:13px;text-align:right;font-weight:600" class="${pcc(pV)}">${fmt(v.venta)}</td>
       <td style="padding:8px 6px;font-size:13px;text-align:right" class="${pcc(pT)}">${v.tickets}</td>
       <td style="padding:8px 6px;font-size:13px;text-align:right;color:#9b9b9b">${v.tickets>0?fmt(Math.round(v.venta/v.tickets)):'—'}</td>
       <td style="padding:8px 6px;font-size:13px;text-align:right;font-weight:600" class="${pcc(pV)}">${pV}%</td>
     </tr>`;
   }).join('');
-
   document.getElementById('hist-table-wrap').innerHTML=`
+    <div class="slabel" style="margin-bottom:8px">Detalle por día</div>
     <div style="overflow-x:auto">
       <table style="width:100%;border-collapse:collapse">
         <thead><tr>
-          <th style="text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#9b9b9b;padding:0 6px 8px;font-weight:600">Fecha</th>
-          <th style="text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#9b9b9b;padding:0 6px 8px;font-weight:600">Venta neta</th>
-          <th style="text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#9b9b9b;padding:0 6px 8px;font-weight:600">Tickets</th>
-          <th style="text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#9b9b9b;padding:0 6px 8px;font-weight:600">Tkt prom.</th>
-          <th style="text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#9b9b9b;padding:0 6px 8px;font-weight:600">vs obj.</th>
+          <th style="text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#9b9b9b;padding:0 6px 8px;font-weight:600">Fecha / A·B·C</th>
+          <th style="text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#9b9b9b;padding:0 6px 8px;font-weight:600">Venta</th>
+          <th style="text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#9b9b9b;padding:0 6px 8px;font-weight:600">Tkts</th>
+          <th style="text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#9b9b9b;padding:0 6px 8px;font-weight:600">Prom.</th>
+          <th style="text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#9b9b9b;padding:0 6px 8px;font-weight:600">Obj.</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
@@ -1277,7 +1453,7 @@ function handleFile(evt){
 }
 
 function processImport(rows){
-  const byDate={};
+  const ticketsByDate={};  // date -> seller -> [{amount, created_at}]
   const atenByDate={};
   rows.forEach(r=>{
     const vend=r['Presup. Por'];
@@ -1285,40 +1461,36 @@ function processImport(rows){
     if(!fecha) return;
     const dk=(()=>{
       if(typeof fecha==='string'){
-        // handle DD/MM/YYYY or DD-MM-YYYY
         const parts=fecha.split(/[\/\-]/);
         if(parts.length===3&&parseInt(parts[0])>12){
-          // definitely DD/MM/YYYY
           return `${parts[2].substring(0,4)}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
         }
         return fecha.substring(0,10);
       }
+      // Excel date object — use as-is
       return new Date(fecha).toISOString().substring(0,10);
     })();
-    // init atencion counter for this date
     if(!atenByDate[dk]) atenByDate[dk]={atendidos:0,ingresados:0};
     atenByDate[dk].ingresados+=1;
     if(vend&&vend.trim()!==''){
-      // attended row — also count as sale
       atenByDate[dk].atendidos+=1;
       const nv=parseFloat((r['Neto']||'0').toString().replace(',','.'));
       if(isNaN(nv)||nv<=0) return;
       const nombre=vend.split(',')[0].trim();
-      if(!byDate[dk]) byDate[dk]={};
-      if(!byDate[dk][nombre]) byDate[dk][nombre]={venta:0,tickets:0};
-      byDate[dk][nombre].venta+=nv;
-      byDate[dk][nombre].tickets+=1;
+      if(!ticketsByDate[dk]) ticketsByDate[dk]={};
+      if(!ticketsByDate[dk][nombre]) ticketsByDate[dk][nombre]=[];
+      // store as amount WITH IVA so it matches how vendors enter sales
+      ticketsByDate[dk][nombre].push({amount:nv*IVA});
     }
-    // blank Presup. Por = ingresó pero no fue atendido, already counted above
   });
-  impData={sales:byDate,atencion:atenByDate};
+  impData={tickets:ticketsByDate,atencion:atenByDate};
   const dates=Object.keys(atenByDate).sort();
   if(!dates.length){
     document.getElementById('imp-preview').innerHTML='<div class="empty">No se encontraron filas válidas.</div>';
     document.getElementById('imp-preview').classList.remove('hidden');
     return;
   }
-  let html=`<div style="font-size:13px;color:#6b6b6b;margin-bottom:10px">${dates.length} día(s) encontrado(s).</div>`;
+  let html=`<div style="font-size:13px;color:#6b6b6b;margin-bottom:10px">${dates.length} día(s) · tickets individuales con clasificación A/B/C.</div>`;
   dates.forEach(d=>{
     const a=atenByDate[d];
     const pct=a.ingresados>0?Math.round((a.atendidos/a.ingresados)*100):0;
@@ -1328,9 +1500,19 @@ function processImport(rows){
         <span style="font-size:12px;font-weight:700;color:#9b9b9b">${d}</span>
         <span style="font-size:12px;font-weight:700" class="${cls}">Atención: ${pct}% (${a.atendidos}/${a.ingresados})</span>
       </div>`;
-    if(byDate[d]){
-      Object.entries(byDate[d]).forEach(([n,v])=>{
-        html+=`<div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-bottom:1px solid rgba(0,0,0,0.06)"><span>${n}</span><span style="font-weight:600">${fmt(v.venta)} neto · ${v.tickets} tkt</span></div>`;
+    if(ticketsByDate[d]){
+      Object.entries(ticketsByDate[d]).forEach(([n,tkts])=>{
+        const totalNeto=tkts.reduce((a,t)=>a+neto(t.amount),0);
+        const abcCount={A:0,B:0,C:0};
+        tkts.forEach(t=>{ abcCount[abcClass(neto(t.amount))]++; });
+        html+=`<div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-bottom:1px solid rgba(0,0,0,0.06)">
+          <span>${n}</span>
+          <span style="font-weight:600">${fmt(totalNeto)} · ${tkts.length} tkt
+            <span style="font-size:10px;color:#15803d;margin-left:4px">A:${abcCount.A}</span>
+            <span style="font-size:10px;color:#854d0e;margin-left:3px">B:${abcCount.B}</span>
+            <span style="font-size:10px;color:#475569;margin-left:3px">C:${abcCount.C}</span>
+          </span>
+        </div>`;
       });
     }
     html+=`</div>`;
@@ -1344,31 +1526,40 @@ async function confirmImport(){
   if(!impData) return;
   const btn=document.getElementById('imp-confirm');
   btn.textContent='Importando...'; btn.disabled=true;
-  const {sales,atencion}=impData;
-  // save sales per vendor
-  for(const [date,bySeller] of Object.entries(sales)){
-    for(const [name,v] of Object.entries(bySeller)){
+  const {tickets,atencion}=impData;
+  // save individual tickets per vendor per date
+  for(const [date,bySeller] of Object.entries(tickets)){
+    for(const [name,tkts] of Object.entries(bySeller)){
       const match=C.sellers.find(s=>
-        s.name.toLowerCase().includes(name.toLowerCase().split(' ')[0])||
+        s.name.toLowerCase().includes(name.toLowerCase())||
         name.toLowerCase().includes(s.name.toLowerCase().split(' ')[0])
       );
       const sn=match?match.name:name;
-      const data={seller_name:sn,date,total_venta:v.venta,total_tickets:v.tickets};
-      try{
-        await db.from('daily_totals').upsert(data,{onConflict:'seller_name,date'});
-        await db.from('sales').delete().eq('seller_name',sn).eq('date',date);
-      }catch(e){ addQ({type:'upsertTotal',data}); }
+      // delete existing data for this seller+date
+      try{ await db.from('sales').delete().eq('seller_name',sn).eq('date',date); }catch(e){}
+      try{ await db.from('daily_totals').delete().eq('seller_name',sn).eq('date',date); }catch(e){}
+      // insert individual tickets
+      const salesRows=tkts.map(t=>({
+        seller_name:sn,
+        date,
+        amount:t.amount,
+        note:'importado',
+        created_at:new Date(date+'T12:00:00').toISOString()
+      }));
+      if(salesRows.length){
+        try{ await db.from('sales').insert(salesRows); }
+        catch(e){ salesRows.forEach(d=>addQ({type:'addSale',data:d})); }
+      }
     }
   }
   // save atencion per date
   for(const [date,a] of Object.entries(atencion)){
     const data={date,atendidos:a.atendidos,ingresados:a.ingresados};
     C.atencion[date]=data;
-    try{
-      await db.from('team_atencion').upsert(data,{onConflict:'date'});
-    }catch(e){ addQ({type:'upsertAten',data}); }
+    try{ await db.from('team_atencion').upsert(data,{onConflict:'date'}); }
+    catch(e){ addQ({type:'upsertAten',data}); }
   }
-  document.getElementById('imp-preview').innerHTML='<div style="color:#15803d;font-size:13px;padding:8px 0;font-weight:600">✓ Importación completada — ventas y atención actualizadas</div>';
+  document.getElementById('imp-preview').innerHTML='<div style="color:#15803d;font-size:13px;padding:8px 0;font-weight:600">✓ Importación completada — ventas con A/B/C y atención actualizadas</div>';
   btn.classList.add('hidden'); btn.disabled=false; impData=null;
   showToast('Excel importado ✓');
 }
