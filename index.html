@@ -263,6 +263,7 @@ input:focus,select:focus{border-color:#4a7c59;background:#fff}
   <div class="stabs">
     <button class="stab active" id="st-resumen" onclick="setSTab('resumen')">Resumen</button>
     <button class="stab" id="st-atencion" onclick="setSTab('atencion')">Atención</button>
+    <button class="stab" id="st-historial" onclick="setSTab('historial')">Historial</button>
     <button class="stab" id="st-vendedores" onclick="setSTab('vendedores')">Vendedores</button>
     <button class="stab" id="st-objetivos" onclick="setSTab('objetivos')">Objetivos</button>
     <button class="stab" id="st-importar" onclick="setSTab('importar')">Importar</button>
@@ -307,7 +308,29 @@ input:focus,select:focus{border-color:#4a7c59;background:#fff}
     </div>
   </div>
 
-  <div id="sp-vendedores" class="hidden">
+  <div id="sp-historial" class="hidden">
+    <div class="card">
+      <div class="card-title">Historial por vendedor</div>
+      <div class="frow" style="margin-bottom:12px">
+        <div class="fgroup">
+          <label>Vendedor</label>
+          <select id="hist-seller-sel" onchange="renderHistorial()">
+            <option value="">Seleccioná un vendedor</option>
+          </select>
+        </div>
+        <div class="fgroup">
+          <label>Desde</label>
+          <input type="date" id="hist-from" onchange="renderHistorial()" />
+        </div>
+        <div class="fgroup">
+          <label>Hasta</label>
+          <input type="date" id="hist-to" onchange="renderHistorial()" />
+        </div>
+      </div>
+      <div id="hist-summary" class="hidden" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px"></div>
+      <div id="hist-table-wrap"><div class="empty">Elegí un vendedor para ver su historial.</div></div>
+    </div>
+  </div>
     <div class="card">
       <div class="card-title">Vendedores, PINs y días laborales</div>
       <div id="sellers-cfg"></div>
@@ -849,12 +872,13 @@ async function delSale(id){
 // ─── SUPERVISOR ──────────────────────────────────────────────────────────────
 function setSTab(t){
   sTab=t;
-  ['resumen','atencion','vendedores','objetivos','importar'].forEach(s=>{
+  ['resumen','atencion','historial','vendedores','objetivos','importar'].forEach(s=>{
     document.getElementById('st-'+s).className='stab'+(t===s?' active':'');
     document.getElementById('sp-'+s).classList.toggle('hidden',t!==s);
   });
   if(t==='resumen') renderResumen();
   if(t==='atencion') renderAtencion();
+  if(t==='historial') initHistorial();
   if(t==='vendedores') renderVendedores();
   if(t==='objetivos') renderObjTable();
 }
@@ -1004,7 +1028,103 @@ function updAtencion(save=true){
   }
 }
 
-function renderVendedores(){
+function initHistorial(){
+  // populate seller select
+  const sel=document.getElementById('hist-seller-sel');
+  const cur=sel.value;
+  sel.innerHTML='<option value="">Seleccioná un vendedor</option>'+
+    C.sellers.map(s=>`<option value="${s.name}" ${s.name===cur?'selected':''}>${s.name}</option>`).join('');
+  // default dates: last 30 days
+  if(!document.getElementById('hist-to').value){
+    const to=new Date(TODAY);
+    const from=new Date(TODAY); from.setDate(from.getDate()-29);
+    document.getElementById('hist-to').value=to.toISOString().split('T')[0];
+    document.getElementById('hist-from').value=from.toISOString().split('T')[0];
+  }
+  if(cur) renderHistorial();
+}
+
+async function renderHistorial(){
+  const seller=document.getElementById('hist-seller-sel').value;
+  const from=document.getElementById('hist-from').value;
+  const to=document.getElementById('hist-to').value;
+  if(!seller){ document.getElementById('hist-table-wrap').innerHTML='<div class="empty">Elegí un vendedor para ver su historial.</div>'; document.getElementById('hist-summary').classList.add('hidden'); return; }
+  document.getElementById('hist-table-wrap').innerHTML='<div class="loading"><div class="sp"></div>Cargando...</div>';
+
+  // load from supabase
+  let sales=[], totals=[];
+  try{
+    const {data:sd}=await db.from('sales').select('*').eq('seller_name',seller).gte('date',from).lte('date',to).order('date',{ascending:false});
+    sales=sd||[];
+  }catch(e){}
+  try{
+    const {data:td}=await db.from('daily_totals').select('*').eq('seller_name',seller).gte('date',from).lte('date',to).order('date',{ascending:false});
+    totals=td||[];
+  }catch(e){}
+
+  // build day map
+  const dayMap={};
+  totals.forEach(t=>{ dayMap[t.date]={venta:t.total_venta||0,tickets:t.total_tickets||0,isTotal:true}; });
+  sales.forEach(s=>{
+    if(!dayMap[s.date]) dayMap[s.date]={venta:0,tickets:0,isTotal:false};
+    if(!dayMap[s.date].isTotal){ dayMap[s.date].venta+=neto(s.amount); dayMap[s.date].tickets+=1; }
+  });
+
+  const days=Object.keys(dayMap).sort().reverse();
+  if(!days.length){
+    document.getElementById('hist-table-wrap').innerHTML='<div class="empty">Sin datos para ese período.</div>';
+    document.getElementById('hist-summary').classList.add('hidden');
+    return;
+  }
+
+  // summary
+  const totalVenta=days.reduce((a,d)=>a+dayMap[d].venta,0);
+  const totalTickets=days.reduce((a,d)=>a+dayMap[d].tickets,0);
+  const avgTicket=totalTickets>0?Math.round(totalVenta/totalTickets):0;
+  const sumEl=document.getElementById('hist-summary');
+  sumEl.classList.remove('hidden');
+  sumEl.style.display='grid';
+  sumEl.innerHTML=`
+    <div class="mcard"><div class="mlabel">Venta total</div><div class="mval" style="font-size:16px">${fmt(totalVenta)}</div><div class="msub">${days.length} días</div></div>
+    <div class="mcard"><div class="mlabel">Tickets totales</div><div class="mval" style="font-size:16px">${totalTickets}</div><div class="msub">en el período</div></div>
+    <div class="mcard"><div class="mlabel">Tkt promedio</div><div class="mval" style="font-size:16px">${totalTickets>0?fmt(avgTicket):'—'}</div><div class="msub">neto</div></div>`;
+
+  // table
+  const dnames=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const rows=days.map(d=>{
+    const v=dayMap[d];
+    const dow=new Date(d+'T12:00:00').getDay();
+    const dt=getDT(dow);
+    const obj=getObj(seller,dt);
+    const pV=obj.venta>0?Math.min(100,Math.round((v.venta/obj.venta)*100)):0;
+    const pT=obj.tickets>0?Math.min(100,Math.round((v.tickets/obj.tickets)*100)):0;
+    const [y,m,day]=d.split('-');
+    const isToday=d===DATEKEY;
+    return `<tr style="${isToday?'background:#f0efe9;':''}">
+      <td style="padding:8px 6px;font-size:13px;color:${isToday?'#1a1a1a':'#6b6b6b'};font-weight:${isToday?'700':'400'}">${dnames[dow]} ${day}/${m}</td>
+      <td style="padding:8px 6px;font-size:13px;text-align:right;font-weight:600" class="${pcc(pV)}">${fmt(v.venta)}</td>
+      <td style="padding:8px 6px;font-size:13px;text-align:right" class="${pcc(pT)}">${v.tickets}</td>
+      <td style="padding:8px 6px;font-size:13px;text-align:right;color:#9b9b9b">${v.tickets>0?fmt(Math.round(v.venta/v.tickets)):'—'}</td>
+      <td style="padding:8px 6px;font-size:13px;text-align:right;font-weight:600" class="${pcc(pV)}">${pV}%</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('hist-table-wrap').innerHTML=`
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr>
+          <th style="text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#9b9b9b;padding:0 6px 8px;font-weight:600">Fecha</th>
+          <th style="text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#9b9b9b;padding:0 6px 8px;font-weight:600">Venta neta</th>
+          <th style="text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#9b9b9b;padding:0 6px 8px;font-weight:600">Tickets</th>
+          <th style="text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#9b9b9b;padding:0 6px 8px;font-weight:600">Tkt prom.</th>
+          <th style="text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#9b9b9b;padding:0 6px 8px;font-weight:600">vs obj.</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+
   const dlbl=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
   document.getElementById('sellers-cfg').innerHTML=C.sellers.map((s,i)=>{
     const sw=s.workdays||[1,2,3,4,5,6];
