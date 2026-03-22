@@ -1164,25 +1164,22 @@ async function renderHistorial(){
   const prevTickets=Object.values(prevMap).reduce((a,v)=>a+v.tickets,0);
 
   // ── OBJETIVO DEL PERÍODO ──
-  // Iterate every calendar day in the range and sum objectives for days the seller works
-  const objTotal={venta:0,tickets:0};   // full period objective
-  const objHastaHoy={venta:0,tickets:0}; // objective only up to today
+  // Calculate based only on days with actual sales (handles absences and extra days automatically)
+  const objTotal={venta:0,tickets:0};
+  const objHastaHoy={venta:0,tickets:0};
   const todayStr=DATEKEY;
-  const iterFrom=new Date(from+'T12:00:00');
-  const iterTo=new Date(to+'T12:00:00');
-  for(let d=new Date(iterFrom);d<=iterTo;d.setDate(d.getDate()+1)){
-    const dow=d.getDay();
-    if(!worksDay(seller,dow)) continue;
+  const cutoff=todayStr<to?todayStr:to;
+  days.forEach(d=>{
+    const dow=new Date(d+'T12:00:00').getDay();
     const dt=getDT(dow);
     const obj=getObj(seller,dt);
     objTotal.venta+=obj.venta;
     objTotal.tickets+=obj.tickets;
-    const dk=d.toISOString().split('T')[0];
-    if(dk<=todayStr){
+    if(d<=cutoff){
       objHastaHoy.venta+=obj.venta;
       objHastaHoy.tickets+=obj.tickets;
     }
-  }
+  });
   const pctVsObj=objHastaHoy.venta>0?Math.round((totalVenta/objHastaHoy.venta)*100):null;
   const diffVsObj=objHastaHoy.venta>0?totalVenta-objHastaHoy.venta:null;
 
@@ -1211,7 +1208,7 @@ async function renderHistorial(){
         <span style="font-size:12px;color:#9b9b9b">Obj. total: ${fmt(objTotal.venta)}</span>
       </div>
       <div style="display:flex;justify-content:space-between;font-size:12px;color:#6b6b6b;margin-bottom:6px">
-        <span>Debería llevar: <strong style="color:#1a1a1a">${fmt(objHastaHoy.venta)}</strong></span>
+        <span>${todayStr>=to?'Obj. del período:':'Debería llevar al '+cutoff.split('-').slice(1).reverse().join('/')+'.'} <strong style="color:#1a1a1a">${fmt(objHastaHoy.venta)}</strong></span>
         <span>Lleva: <strong style="color:#1a1a1a">${fmt(totalVenta)}</strong></span>
       </div>
       <div style="height:10px;background:#f0efe9;border-radius:5px;overflow:hidden;margin-bottom:6px">
