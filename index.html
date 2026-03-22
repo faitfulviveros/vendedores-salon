@@ -1283,7 +1283,18 @@ function processImport(rows){
     const vend=r['Presup. Por'];
     const fecha=r['Fecha'];
     if(!fecha) return;
-    const dk=typeof fecha==='string'?fecha.substring(0,10):new Date(fecha).toISOString().substring(0,10);
+    const dk=(()=>{
+      if(typeof fecha==='string'){
+        // handle DD/MM/YYYY or DD-MM-YYYY
+        const parts=fecha.split(/[\/\-]/);
+        if(parts.length===3&&parseInt(parts[0])>12){
+          // definitely DD/MM/YYYY
+          return `${parts[2].substring(0,4)}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+        }
+        return fecha.substring(0,10);
+      }
+      return new Date(fecha).toISOString().substring(0,10);
+    })();
     // init atencion counter for this date
     if(!atenByDate[dk]) atenByDate[dk]={atendidos:0,ingresados:0};
     atenByDate[dk].ingresados+=1;
@@ -1292,7 +1303,7 @@ function processImport(rows){
       atenByDate[dk].atendidos+=1;
       const nv=parseFloat((r['Neto']||'0').toString().replace(',','.'));
       if(isNaN(nv)||nv<=0) return;
-      const nombre=vend.split(',')[1]?vend.split(',')[1].trim():vend.trim();
+      const nombre=vend.split(',')[0].trim();
       if(!byDate[dk]) byDate[dk]={};
       if(!byDate[dk][nombre]) byDate[dk][nombre]={venta:0,tickets:0};
       byDate[dk][nombre].venta+=nv;
