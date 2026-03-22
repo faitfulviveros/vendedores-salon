@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -155,6 +156,7 @@ input:focus,select:focus{border-color:#4a7c59;background:#fff}
 .badge-bad{background:#fee2e2;color:#991b1b;border-color:#fca5a5}
 .badge-neutral{background:#f9f8f5;color:#9b9b9b;border-color:rgba(0,0,0,0.1)}
 </style>
+
 </head>
 <body>
 <div class="app">
@@ -179,6 +181,7 @@ input:focus,select:focus{border-color:#4a7c59;background:#fff}
 </div>
 
 <!-- SELECT SELLER -->
+
 <div id="sc-select">
   <div class="login-wrap">
     <div class="login-title">¿Quién sos?</div>
@@ -191,6 +194,7 @@ input:focus,select:focus{border-color:#4a7c59;background:#fff}
 </div>
 
 <!-- PIN -->
+
 <div id="sc-pin" class="hidden">
   <div class="login-wrap">
     <div class="login-title" id="pin-title">Ingresá tu PIN</div>
@@ -218,6 +222,7 @@ input:focus,select:focus{border-color:#4a7c59;background:#fff}
 </div>
 
 <!-- VENDEDOR -->
+
 <div id="sc-vendedor" class="hidden">
   <div id="mot-banner" class="mot-banner b-neutral"></div>
   <div id="nowork-banner" class="nowork-banner hidden"></div>
@@ -260,6 +265,7 @@ input:focus,select:focus{border-color:#4a7c59;background:#fff}
 </div>
 
 <!-- SUPERVISOR -->
+
 <div id="sc-supervisor" class="hidden">
   <div class="stabs">
     <button class="stab active" id="st-resumen" onclick="setSTab('resumen')">Resumen</button>
@@ -1094,7 +1100,8 @@ function updAtencion(save=true){
   }
 }
 
-function initHistorial(){
+async function initHistorial(){
+  await loadObjectives();
   // populate seller select
   const sel=document.getElementById('hist-seller-sel');
   const cur=sel.value;
@@ -1123,6 +1130,8 @@ async function renderHistorial(){
   }
   document.getElementById('hist-empty').classList.add('hidden');
   document.getElementById('hist-table-wrap').innerHTML='<div class="loading"><div class="sp"></div>Cargando...</div>';
+  // Always reload objectives fresh from Supabase
+  await loadObjectives();
 
   let sales=[], totals=[];
   try{ const {data:sd}=await db.from('sales').select('*').eq('seller_name',seller).gte('date',from).lte('date',to).order('date',{ascending:false}); sales=sd||[]; }catch(e){}
@@ -1164,42 +1173,39 @@ async function renderHistorial(){
   const prevTickets=Object.values(prevMap).reduce((a,v)=>a+v.tickets,0);
 
   // ── OBJETIVO DEL PERÍODO ──
-  // objHastaHoy = sum of objectives for days with actual sales up to today
-  // objTotal = full month objective (always the complete month, not just selected range)
+  // Load objectives fresh from Supabase to ensure they're available
+  let sellerObjs={};
+  try{
+    const {data:od}=await db.from('objectives').select('*').eq('seller_name',seller);
+    (od||[]).forEach(o=>{ sellerObjs[o.day_type]={venta:o.venta||0,tickets:o.tickets||0}; });
+  }catch(e){}
+
+  function getObjDirect(dt){ return sellerObjs[dt]||{venta:0,tickets:0}; }
+
   const objTotal={venta:0,tickets:0};
   const objHastaHoy={venta:0,tickets:0};
   const todayStr=DATEKEY;
   const cutoff=todayStr<to?todayStr:to;
 
-  // Full month: use first day of 'from' month to last day of that month
+  // Full month objective
   const monthStart=from.substring(0,7)+'-01';
-  const monthEnd=new Date(new Date(monthStart).getFullYear(), new Date(monthStart).getMonth()+1, 0).toISOString().split('T')[0];
-  // Full month objective: iterate all calendar days of the month
-  // Use all day types (semana/sabado/domingo) regardless of workdays config
-  // since worksDay may not match at render time
-  const iterD=new Date(monthStart+'T12:00:00');
-  const iterEnd=new Date(monthEnd+'T12:00:00');
-  for(let d=new Date(iterD);d<=iterEnd;d.setDate(d.getDate()+1)){
+  const monthEnd=new Date(new Date(monthStart).getFullYear(),new Date(monthStart).getMonth()+1,0).toISOString().split('T')[0];
+  for(let d=new Date(monthStart+'T12:00:00');d<=new Date(monthEnd+'T12:00:00');d.setDate(d.getDate()+1)){
     const dow=d.getDay();
-    const dt=getDT(dow);
-    const obj=getObj(seller,dt);
-    // Only count days where this seller has a configured objective > 0
-    if(obj.venta>0) {
-      objTotal.venta+=obj.venta;
-      objTotal.tickets+=obj.tickets;
-    }
+    const obj=getObjDirect(getDT(dow));
+    if(obj.venta>0){ objTotal.venta+=obj.venta; objTotal.tickets+=obj.tickets; }
   }
 
   // Objective for days with actual sales up to cutoff
   days.forEach(d=>{
     if(d<=cutoff){
       const dow=new Date(d+'T12:00:00').getDay();
-      const dt=getDT(dow);
-      const obj=getObj(seller,dt);
+      const obj=getObjDirect(getDT(dow));
       objHastaHoy.venta+=obj.venta;
       objHastaHoy.tickets+=obj.tickets;
     }
   });
+
   const pctVsObj=objHastaHoy.venta>0?Math.round((totalVenta/objHastaHoy.venta)*100):null;
   const diffVsObj=objHastaHoy.venta>0?totalVenta-objHastaHoy.venta:null;
 
@@ -1662,5 +1668,6 @@ async function init(){
 
 init();
 </script>
+
 </body>
 </html>
