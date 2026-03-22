@@ -1447,7 +1447,7 @@ function handleFile(evt){
   reader.onload=e=>{
     const wb=XLSX.read(e.target.result,{type:'array',cellDates:true});
     const ws=wb.Sheets[wb.SheetNames[0]];
-    processImport(XLSX.utils.sheet_to_json(ws,{raw:false}));
+    processImport(XLSX.utils.sheet_to_json(ws,{raw:true,defval:''}));
   };
   reader.readAsArrayBuffer(file);
 }
@@ -1460,16 +1460,24 @@ function processImport(rows){
     const fecha=r['Fecha'];
     if(!fecha) return;
     const dk=(()=>{
-      if(typeof fecha==='string'){
-        const parts=fecha.split(/[\/\-]/);
-        if(parts.length===3&&parseInt(parts[0])>12){
-          return `${parts[2].substring(0,4)}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
-        }
-        return fecha.substring(0,10);
+      if(!fecha && fecha!==0) return null;
+      // raw:true with cellDates:true → Date object
+      if(fecha instanceof Date){
+        return fecha.toISOString().substring(0,10);
       }
-      // Excel date object — use as-is
-      return new Date(fecha).toISOString().substring(0,10);
+      // raw:true without cellDates → Excel serial number
+      if(typeof fecha==='number'){
+        const d=new Date(Math.round((fecha-25569)*86400*1000));
+        return d.toISOString().substring(0,10);
+      }
+      // string fallback
+      const parts=fecha.toString().split(/[\/\-]/);
+      if(parts.length===3&&parseInt(parts[0])>12){
+        return `${parts[2].substring(0,4)}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+      }
+      return fecha.toString().substring(0,10);
     })();
+    if(!dk) return;
     if(!atenByDate[dk]) atenByDate[dk]={atendidos:0,ingresados:0};
     atenByDate[dk].ingresados+=1;
     if(vend&&vend.trim()!==''){
