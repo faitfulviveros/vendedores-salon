@@ -1174,15 +1174,20 @@ async function renderHistorial(){
   // Full month: use first day of 'from' month to last day of that month
   const monthStart=from.substring(0,7)+'-01';
   const monthEnd=new Date(new Date(monthStart).getFullYear(), new Date(monthStart).getMonth()+1, 0).toISOString().split('T')[0];
+  // Full month objective: iterate all calendar days of the month
+  // Use all day types (semana/sabado/domingo) regardless of workdays config
+  // since worksDay may not match at render time
   const iterD=new Date(monthStart+'T12:00:00');
   const iterEnd=new Date(monthEnd+'T12:00:00');
   for(let d=new Date(iterD);d<=iterEnd;d.setDate(d.getDate()+1)){
     const dow=d.getDay();
-    if(!worksDay(seller,dow)) continue;
     const dt=getDT(dow);
     const obj=getObj(seller,dt);
-    objTotal.venta+=obj.venta;
-    objTotal.tickets+=obj.tickets;
+    // Only count days where this seller has a configured objective > 0
+    if(obj.venta>0) {
+      objTotal.venta+=obj.venta;
+      objTotal.tickets+=obj.tickets;
+    }
   }
 
   // Objective for days with actual sales up to cutoff
