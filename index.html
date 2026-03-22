@@ -1474,7 +1474,8 @@ function processImport(rows){
     atenByDate[dk].ingresados+=1;
     if(vend&&vend.trim()!==''){
       atenByDate[dk].atendidos+=1;
-      const nv=parseFloat((r['Neto']||'0').toString().replace(/\./g,'').replace(',','.'));
+      const rawNeto=r['Neto']||'0';
+      const nv=typeof rawNeto==='number'?rawNeto:parseFloat(rawNeto.toString().replace(/\./g,'').replace(',','.'));
       if(isNaN(nv)||nv<=0) return;
       const nombre=vend.split(',')[0].trim();
       if(!ticketsByDate[dk]) ticketsByDate[dk]={};
