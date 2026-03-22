@@ -1182,8 +1182,8 @@ async function renderHistorial(){
   const todayStr=DATEKEY;
   const cutoff=todayStr<to?todayStr:to;
 
-  // Full month objective
-  const monthStart=from.substring(0,7)+'-01';
+  // Full month objective — use the month of the END date (to)
+  const monthStart=to.substring(0,7)+'-01';
   const monthEnd=new Date(new Date(monthStart).getFullYear(),new Date(monthStart).getMonth()+1,0).toISOString().split('T')[0];
   console.log('sellerObjs:', JSON.stringify(sellerObjs), 'monthStart:', monthStart, 'monthEnd:', monthEnd);
   for(let d=new Date(monthStart+'T12:00:00');d<=new Date(monthEnd+'T12:00:00');d.setDate(d.getDate()+1)){
