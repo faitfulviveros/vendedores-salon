@@ -1490,10 +1490,11 @@ function processImport(rows){
       const nv=typeof rawNeto==='number'?rawNeto:parseFloat(rawNeto.toString().replace(/\./g,'').replace(',','.'));
       if(isNaN(nv)||nv<=0) return;
       const nombre=vend.split(',')[0].trim();
+      const nombre2=vend.split(',')[1]?vend.split(',')[1].trim():'';
       if(!ticketsByDate[dk]) ticketsByDate[dk]={};
-      if(!ticketsByDate[dk][nombre]) ticketsByDate[dk][nombre]=[];
-      // store as amount WITH IVA so it matches how vendors enter sales
-      ticketsByDate[dk][nombre].push({amount:nv*IVA});
+      const keyName=nombre2||nombre;
+      if(!ticketsByDate[dk][keyName]) ticketsByDate[dk][keyName]=[];
+      ticketsByDate[dk][keyName].push({amount:nv*IVA});
     }
   });
   impData={tickets:ticketsByDate,atencion:atenByDate};
@@ -1543,10 +1544,12 @@ async function confirmImport(){
   // save individual tickets per vendor per date
   for(const [date,bySeller] of Object.entries(tickets)){
     for(const [name,tkts] of Object.entries(bySeller)){
-      const match=C.sellers.find(s=>
-        s.name.toLowerCase().includes(name.toLowerCase())||
-        name.toLowerCase().includes(s.name.toLowerCase().split(' ')[0])
-      );
+      const match=C.sellers.find(s=>{
+        const sn=s.name.toLowerCase();
+        const n=name.toLowerCase();
+        return sn.includes(n)||n.includes(sn)||
+               sn.includes(n.split(' ')[0])||n.split(' ')[0].includes(sn);
+      });
       const sn=match?match.name:name;
       // delete existing data for this seller+date
       try{ await db.from('sales').delete().eq('seller_name',sn).eq('date',date); }catch(e){}
