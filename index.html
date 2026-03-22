@@ -1181,12 +1181,23 @@ async function renderHistorial(){
   const todayStr=DATEKEY;
   const cutoff=todayStr<to?todayStr:to;
 
-  // Sum objectives only for days with actual sales in the selected range
-  days.forEach(d=>{
-    const dow=new Date(d+'T12:00:00').getDay();
+  // objTotal = all configured working days in the month of 'to'
+  const toParts=to.split('-');
+  const tYear=parseInt(toParts[0]), tMonth=parseInt(toParts[1])-1;
+  const daysInMonth=new Date(tYear, tMonth+1, 0).getDate();
+  for(let day=1;day<=daysInMonth;day++){
+    const d=new Date(tYear, tMonth, day);
+    const dow=d.getDay();
+    if(!worksDay(seller,dow)) continue;
     const obj=getObjDirect(getDT(dow));
     if(obj.venta>0){ objTotal.venta+=obj.venta; objTotal.tickets+=obj.tickets; }
+  }
+
+  // objHastaHoy = only days with actual sales up to cutoff
+  days.forEach(d=>{
     if(d<=cutoff){
+      const dow=new Date(d+'T12:00:00').getDay();
+      const obj=getObjDirect(getDT(dow));
       objHastaHoy.venta+=obj.venta;
       objHastaHoy.tickets+=obj.tickets;
     }
