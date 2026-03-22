@@ -380,6 +380,7 @@ input:focus,select:focus{border-color:#4a7c59;background:#fff}
     </div>
   </div>
 </div>
+</div>
 
 <script>
 // ─── SUPABASE ───────────────────────────────────────────────────────────────
@@ -1123,7 +1124,7 @@ async function renderHistorial(){
     </div>`;
 }
 
-
+function renderVendedores(){
   const dlbl=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
   document.getElementById('sellers-cfg').innerHTML=C.sellers.map((s,i)=>{
     const sw=s.workdays||[1,2,3,4,5,6];
