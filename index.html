@@ -1158,31 +1158,51 @@ function handleFile(evt){
 
 function processImport(rows){
   const byDate={};
+  const atenByDate={};
   rows.forEach(r=>{
     const vend=r['Presup. Por'];
-    const nv=parseFloat((r['Neto']||'0').toString().replace(',','.'));
     const fecha=r['Fecha'];
-    if(!vend||!fecha||isNaN(nv)||nv<=0) return;
-    const nombre=vend.split(',')[1]?vend.split(',')[1].trim():vend.trim();
+    if(!fecha) return;
     const dk=typeof fecha==='string'?fecha.substring(0,10):new Date(fecha).toISOString().substring(0,10);
-    if(!byDate[dk]) byDate[dk]={};
-    if(!byDate[dk][nombre]) byDate[dk][nombre]={venta:0,tickets:0};
-    byDate[dk][nombre].venta+=nv;
-    byDate[dk][nombre].tickets+=1;
+    // init atencion counter for this date
+    if(!atenByDate[dk]) atenByDate[dk]={atendidos:0,ingresados:0};
+    atenByDate[dk].ingresados+=1;
+    if(vend&&vend.trim()!==''){
+      // attended row — also count as sale
+      atenByDate[dk].atendidos+=1;
+      const nv=parseFloat((r['Neto']||'0').toString().replace(',','.'));
+      if(isNaN(nv)||nv<=0) return;
+      const nombre=vend.split(',')[1]?vend.split(',')[1].trim():vend.trim();
+      if(!byDate[dk]) byDate[dk]={};
+      if(!byDate[dk][nombre]) byDate[dk][nombre]={venta:0,tickets:0};
+      byDate[dk][nombre].venta+=nv;
+      byDate[dk][nombre].tickets+=1;
+    }
+    // blank Presup. Por = ingresó pero no fue atendido, already counted above
   });
-  impData=byDate;
-  const dates=Object.keys(byDate).sort();
+  impData={sales:byDate,atencion:atenByDate};
+  const dates=Object.keys(atenByDate).sort();
   if(!dates.length){
-    document.getElementById('imp-preview').innerHTML='<div class="empty">No se encontraron ventas válidas.</div>';
+    document.getElementById('imp-preview').innerHTML='<div class="empty">No se encontraron filas válidas.</div>';
     document.getElementById('imp-preview').classList.remove('hidden');
     return;
   }
   let html=`<div style="font-size:13px;color:#6b6b6b;margin-bottom:10px">${dates.length} día(s) encontrado(s).</div>`;
   dates.forEach(d=>{
-    html+=`<div style="font-size:12px;font-weight:700;color:#9b9b9b;margin:8px 0 4px">${d}</div>`;
-    Object.entries(byDate[d]).forEach(([n,v])=>{
-      html+=`<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px solid rgba(0,0,0,0.06)"><span>${n}</span><span style="font-weight:600">${fmt(v.venta)} neto · ${v.tickets} tkt</span></div>`;
-    });
+    const a=atenByDate[d];
+    const pct=a.ingresados>0?Math.round((a.atendidos/a.ingresados)*100):0;
+    const cls=pct>=65?'c-good':pct>=50?'c-warn':'c-danger';
+    html+=`<div style="margin:10px 0 4px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <span style="font-size:12px;font-weight:700;color:#9b9b9b">${d}</span>
+        <span style="font-size:12px;font-weight:700" class="${cls}">Atención: ${pct}% (${a.atendidos}/${a.ingresados})</span>
+      </div>`;
+    if(byDate[d]){
+      Object.entries(byDate[d]).forEach(([n,v])=>{
+        html+=`<div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-bottom:1px solid rgba(0,0,0,0.06)"><span>${n}</span><span style="font-weight:600">${fmt(v.venta)} neto · ${v.tickets} tkt</span></div>`;
+      });
+    }
+    html+=`</div>`;
   });
   document.getElementById('imp-preview').innerHTML=html;
   document.getElementById('imp-preview').classList.remove('hidden');
@@ -1193,7 +1213,9 @@ async function confirmImport(){
   if(!impData) return;
   const btn=document.getElementById('imp-confirm');
   btn.textContent='Importando...'; btn.disabled=true;
-  for(const [date,bySeller] of Object.entries(impData)){
+  const {sales,atencion}=impData;
+  // save sales per vendor
+  for(const [date,bySeller] of Object.entries(sales)){
     for(const [name,v] of Object.entries(bySeller)){
       const match=C.sellers.find(s=>
         s.name.toLowerCase().includes(name.toLowerCase().split(' ')[0])||
@@ -1207,7 +1229,15 @@ async function confirmImport(){
       }catch(e){ addQ({type:'upsertTotal',data}); }
     }
   }
-  document.getElementById('imp-preview').innerHTML='<div style="color:#15803d;font-size:13px;padding:8px 0;font-weight:600">✓ Importación completada</div>';
+  // save atencion per date
+  for(const [date,a] of Object.entries(atencion)){
+    const data={date,atendidos:a.atendidos,ingresados:a.ingresados};
+    C.atencion[date]=data;
+    try{
+      await db.from('team_atencion').upsert(data,{onConflict:'date'});
+    }catch(e){ addQ({type:'upsertAten',data}); }
+  }
+  document.getElementById('imp-preview').innerHTML='<div style="color:#15803d;font-size:13px;padding:8px 0;font-weight:600">✓ Importación completada — ventas y atención actualizadas</div>';
   btn.classList.add('hidden'); btn.disabled=false; impData=null;
   showToast('Excel importado ✓');
 }
