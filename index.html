@@ -1171,9 +1171,8 @@ async function renderHistorial(){
   let sellerObjs={};
   try{
     const {data:od,error:oe}=await db.from('objectives').select('*').eq('seller_name',seller);
-    console.log('objectives fetch:', seller, od, oe);
     (od||[]).forEach(o=>{ sellerObjs[o.day_type]={venta:o.venta||0,tickets:o.tickets||0}; });
-  }catch(e){ console.log('objectives error:',e); }
+  }catch(e){}
 
   function getObjDirect(dt){ return sellerObjs[dt]||{venta:0,tickets:0}; }
 
@@ -1182,22 +1181,12 @@ async function renderHistorial(){
   const todayStr=DATEKEY;
   const cutoff=todayStr<to?todayStr:to;
 
-  // Full month objective — use the month of the END date (to)
-  const monthStart=to.substring(0,7)+'-01';
-  const monthEnd=new Date(new Date(monthStart).getFullYear(),new Date(monthStart).getMonth()+1,0).toISOString().split('T')[0];
-  console.log('sellerObjs:', JSON.stringify(sellerObjs), 'monthStart:', monthStart, 'monthEnd:', monthEnd);
-  for(let d=new Date(monthStart+'T12:00:00');d<=new Date(monthEnd+'T12:00:00');d.setDate(d.getDate()+1)){
-    const dow=d.getDay();
+  // Sum objectives only for days with actual sales in the selected range
+  days.forEach(d=>{
+    const dow=new Date(d+'T12:00:00').getDay();
     const obj=getObjDirect(getDT(dow));
     if(obj.venta>0){ objTotal.venta+=obj.venta; objTotal.tickets+=obj.tickets; }
-  }
-  console.log('objTotal:', objTotal.venta);
-
-  // Objective for days with actual sales up to cutoff
-  days.forEach(d=>{
     if(d<=cutoff){
-      const dow=new Date(d+'T12:00:00').getDay();
-      const obj=getObjDirect(getDT(dow));
       objHastaHoy.venta+=obj.venta;
       objHastaHoy.tickets+=obj.tickets;
     }
