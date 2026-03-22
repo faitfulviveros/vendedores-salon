@@ -1164,18 +1164,33 @@ async function renderHistorial(){
   const prevTickets=Object.values(prevMap).reduce((a,v)=>a+v.tickets,0);
 
   // ── OBJETIVO DEL PERÍODO ──
-  // Calculate based only on days with actual sales (handles absences and extra days automatically)
+  // objHastaHoy = sum of objectives for days with actual sales up to today
+  // objTotal = full month objective (always the complete month, not just selected range)
   const objTotal={venta:0,tickets:0};
   const objHastaHoy={venta:0,tickets:0};
   const todayStr=DATEKEY;
   const cutoff=todayStr<to?todayStr:to;
-  days.forEach(d=>{
-    const dow=new Date(d+'T12:00:00').getDay();
+
+  // Full month: use first day of 'from' month to last day of that month
+  const monthStart=from.substring(0,7)+'-01';
+  const monthEnd=new Date(new Date(monthStart).getFullYear(), new Date(monthStart).getMonth()+1, 0).toISOString().split('T')[0];
+  const iterD=new Date(monthStart+'T12:00:00');
+  const iterEnd=new Date(monthEnd+'T12:00:00');
+  for(let d=new Date(iterD);d<=iterEnd;d.setDate(d.getDate()+1)){
+    const dow=d.getDay();
+    if(!worksDay(seller,dow)) continue;
     const dt=getDT(dow);
     const obj=getObj(seller,dt);
     objTotal.venta+=obj.venta;
     objTotal.tickets+=obj.tickets;
+  }
+
+  // Objective for days with actual sales up to cutoff
+  days.forEach(d=>{
     if(d<=cutoff){
+      const dow=new Date(d+'T12:00:00').getDay();
+      const dt=getDT(dow);
+      const obj=getObj(seller,dt);
       objHastaHoy.venta+=obj.venta;
       objHastaHoy.tickets+=obj.tickets;
     }
