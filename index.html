@@ -1185,11 +1185,13 @@ async function renderHistorial(){
   // Full month objective
   const monthStart=from.substring(0,7)+'-01';
   const monthEnd=new Date(new Date(monthStart).getFullYear(),new Date(monthStart).getMonth()+1,0).toISOString().split('T')[0];
+  console.log('sellerObjs:', JSON.stringify(sellerObjs), 'monthStart:', monthStart, 'monthEnd:', monthEnd);
   for(let d=new Date(monthStart+'T12:00:00');d<=new Date(monthEnd+'T12:00:00');d.setDate(d.getDate()+1)){
     const dow=d.getDay();
     const obj=getObjDirect(getDT(dow));
     if(obj.venta>0){ objTotal.venta+=obj.venta; objTotal.tickets+=obj.tickets; }
   }
+  console.log('objTotal:', objTotal.venta);
 
   // Objective for days with actual sales up to cutoff
   days.forEach(d=>{
