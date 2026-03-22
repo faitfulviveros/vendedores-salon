@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -156,7 +155,6 @@ input:focus,select:focus{border-color:#4a7c59;background:#fff}
 .badge-bad{background:#fee2e2;color:#991b1b;border-color:#fca5a5}
 .badge-neutral{background:#f9f8f5;color:#9b9b9b;border-color:rgba(0,0,0,0.1)}
 </style>
-
 </head>
 <body>
 <div class="app">
@@ -181,7 +179,6 @@ input:focus,select:focus{border-color:#4a7c59;background:#fff}
 </div>
 
 <!-- SELECT SELLER -->
-
 <div id="sc-select">
   <div class="login-wrap">
     <div class="login-title">¿Quién sos?</div>
@@ -194,7 +191,6 @@ input:focus,select:focus{border-color:#4a7c59;background:#fff}
 </div>
 
 <!-- PIN -->
-
 <div id="sc-pin" class="hidden">
   <div class="login-wrap">
     <div class="login-title" id="pin-title">Ingresá tu PIN</div>
@@ -222,7 +218,6 @@ input:focus,select:focus{border-color:#4a7c59;background:#fff}
 </div>
 
 <!-- VENDEDOR -->
-
 <div id="sc-vendedor" class="hidden">
   <div id="mot-banner" class="mot-banner b-neutral"></div>
   <div id="nowork-banner" class="nowork-banner hidden"></div>
@@ -265,7 +260,6 @@ input:focus,select:focus{border-color:#4a7c59;background:#fff}
 </div>
 
 <!-- SUPERVISOR -->
-
 <div id="sc-supervisor" class="hidden">
   <div class="stabs">
     <button class="stab active" id="st-resumen" onclick="setSTab('resumen')">Resumen</button>
@@ -1176,9 +1170,10 @@ async function renderHistorial(){
   // Load objectives fresh from Supabase to ensure they're available
   let sellerObjs={};
   try{
-    const {data:od}=await db.from('objectives').select('*').eq('seller_name',seller);
+    const {data:od,error:oe}=await db.from('objectives').select('*').eq('seller_name',seller);
+    console.log('objectives fetch:', seller, od, oe);
     (od||[]).forEach(o=>{ sellerObjs[o.day_type]={venta:o.venta||0,tickets:o.tickets||0}; });
-  }catch(e){}
+  }catch(e){ console.log('objectives error:',e); }
 
   function getObjDirect(dt){ return sellerObjs[dt]||{venta:0,tickets:0}; }
 
@@ -1668,6 +1663,5 @@ async function init(){
 
 init();
 </script>
-
 </body>
 </html>
