@@ -689,7 +689,7 @@ function logout(){
 }
 
 async function showSelect(){
-  await loadSellers();
+  await Promise.all([loadSellers(), loadCajeros()]);
   renderGrid();
   showSc('sc-select');
 }
@@ -1870,8 +1870,14 @@ async function cajConfirmFinish(withSell){
 // Supervisor cajeros tab
 async function renderCajerosTab(){
   await Promise.all([loadCajeros(), loadCajeroObjs()]);
+  renderCajerosCfg();
+  renderCajeroObjTable();
   // Speed ranking
-  const {data:allTkts}=await db.from('cashier_tickets').select('*').eq('date',DATEKEY).not('duration_seconds','is',null).catch(()=>({data:[]}));
+  let allTkts=[];
+  try{
+    const {data}=await db.from('cashier_tickets').select('*').eq('date',DATEKEY).not('duration_seconds','is',null);
+    allTkts=data||[];
+  }catch(e){}
   const byName={};
   (allTkts||[]).forEach(t=>{
     if(!byName[t.cashier_name]) byName[t.cashier_name]={count:0,totalSec:0,crossSells:0};
