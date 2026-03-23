@@ -184,24 +184,14 @@ input:focus,select:focus{border-color:#4a7c59;background:#fff}
     <div class="login-title">¿Quién sos?</div>
     <div class="login-sub">Elegí tu nombre para ingresar</div>
     <div id="seller-grid" class="seller-grid"></div>
-    <div style="border-top:1px solid rgba(0,0,0,0.08);padding-top:14px;display:flex;gap:8px;justify-content:center">
+    <div style="border-top:1px solid rgba(0,0,0,0.08);padding-top:14px">
       <button class="btn btn-outline" onclick="goPin('__supervisor__')">Modo supervisor</button>
-      <button class="btn btn-primary" onclick="showCajeroSelect()">Soy cajero</button>
     </div>
   </div>
 </div>
 
-<!-- SELECT CAJERO -->
-<div id="sc-cajero-select" class="hidden">
-  <div class="login-wrap">
-    <div class="login-title">¿Qué cajero sos?</div>
-    <div class="login-sub">Elegí tu nombre para ingresar</div>
-    <div id="cajero-grid" class="seller-grid"></div>
-    <div style="border-top:1px solid rgba(0,0,0,0.08);padding-top:14px">
-      <span class="back-link" onclick="showSelect()">← Volver</span>
-    </div>
-  </div>
-</div>
+<!-- SELECT CAJERO (unused, kept for compatibility) -->
+<div id="sc-cajero-select" class="hidden"></div>
 
 <!-- PIN -->
 <div id="sc-pin" class="hidden">
@@ -685,13 +675,14 @@ let curSeller=null,pendingSeller=null,pinBuf='',vTab='ticket',sTab='resumen',obj
 
 // ─── NAVIGATION ──────────────────────────────────────────────────────────────
 function showSc(id){
-  ['sc-select','sc-pin','sc-vendedor','sc-supervisor'].forEach(s=>
+  ['sc-select','sc-pin','sc-vendedor','sc-supervisor','sc-cajero','sc-cajero-select'].forEach(s=>
     document.getElementById(s).classList.toggle('hidden',s!==id)
   );
-  document.getElementById('logout-btn').classList.toggle('hidden',id==='sc-select'||id==='sc-pin');
+  document.getElementById('logout-btn').classList.toggle('hidden',id==='sc-select'||id==='sc-pin'||id==='sc-cajero-select');
 }
 
 function logout(){
+  if(curCajero){ curCajero=null; cajStopTimer(); showSelect(); return; }
   curSeller=null;
   stopRT();
   showSelect();
@@ -705,23 +696,24 @@ async function showSelect(){
 
 function renderGrid(){
   const el=document.getElementById('seller-grid');
-  if(!C.sellers.length){
+  const allCards=[
+    ...C.sellers.map(s=>`<div class="seller-card" onclick="goPin('${s.name}')"><div class="sc-name">${s.name.split(' ')[0]}</div><div class="sc-sub">Vendedor</div></div>`),
+    ...C_cajeros.map(c=>`<div class="seller-card" onclick="goPin('__cajero__${c.name}')" style="border-color:#3b82f6"><div class="sc-name">${c.name.split(' ')[0]}</div><div class="sc-sub" style="color:#3b82f6">Cajero</div></div>`)
+  ];
+  if(!allCards.length){
     el.innerHTML='<div class="empty" style="grid-column:1/-1">Sin vendedores. El supervisor debe configurarlos primero.</div>';
     return;
   }
-  el.innerHTML=C.sellers.map(s=>
-    `<div class="seller-card" onclick="goPin('${s.name}')">
-      <div class="sc-name">${s.name.split(' ')[0]}</div>
-      <div class="sc-sub">Ingresar con PIN</div>
-    </div>`
-  ).join('');
+  el.innerHTML=allCards.join('');
 }
 
 // ─── PIN ─────────────────────────────────────────────────────────────────────
 function goPin(s){
   pendingSeller=s; pinBuf='';
-  document.getElementById('pin-title').textContent=s==='__supervisor__'?'PIN supervisor':'Ingresá tu PIN';
-  document.getElementById('pin-sub').textContent=s==='__supervisor__'?'':s.split(' ')[0];
+  const isCajero=s.startsWith('__cajero__');
+  const isSup=s==='__supervisor__';
+  document.getElementById('pin-title').textContent=isSup?'PIN supervisor':'Ingresá tu PIN';
+  document.getElementById('pin-sub').textContent=isSup?'':(isCajero?s.replace('__cajero__',''):s.split(' ')[0]);
   document.getElementById('pin-error').textContent='';
   dots(); showSc('sc-pin');
 }
@@ -731,12 +723,26 @@ function pback(){ if(pinBuf.length>0){ pinBuf=pinBuf.slice(0,-1); dots(); } }
 function pclear(){ pinBuf=''; dots(); }
 
 async function checkPin(){
+  // cajero login
+  if(pendingSeller&&pendingSeller.startsWith('__cajero__')){
+    const name=pendingSeller.replace('__cajero__','');
+    const cajero=C_cajeros.find(c=>c.name===name);
+    if(!cajero||!cajero.pin){ document.getElementById('pin-error').textContent='Sin PIN asignado.'; pinBuf=''; dots(); return; }
+    if(pinBuf===cajero.pin){
+      curCajero=name; showSc('sc-cajero');
+      document.getElementById('logout-btn').classList.remove('hidden');
+      await renderCajero();
+    } else { document.getElementById('pin-error').textContent='PIN incorrecto'; pinBuf=''; dots(); }
+    return;
+  }
+  // supervisor login
   if(pendingSeller==='__supervisor__'){
     const sp=C.config['sup_pin']||'0000';
     if(pinBuf===sp){ curSeller=null; showSc('sc-supervisor'); setSTab('resumen'); subRT(); }
     else{ document.getElementById('pin-error').textContent='PIN incorrecto'; pinBuf=''; dots(); }
     return;
   }
+  // vendor login
   const seller=C.sellers.find(s=>s.name===pendingSeller);
   if(!seller||!seller.pin){
     document.getElementById('pin-error').textContent='Sin PIN asignado. Pedile al supervisor.';
@@ -1767,51 +1773,6 @@ async function loadCajeroObjs(){
     (data||[]).forEach(o=>{ C_cajeroObjs[o.cashier_name]=o; });
     lss('ft_c_cajero_objs',C_cajeroObjs);
   }catch(e){ C_cajeroObjs=lsg('ft_c_cajero_objs')||{}; }
-}
-
-function showCajeroSelect(){
-  ['sc-select','sc-pin','sc-vendedor','sc-supervisor','sc-cajero','sc-cajero-select'].forEach(s=>
-    document.getElementById(s).classList.add('hidden')
-  );
-  const el=document.getElementById('cajero-grid');
-  if(!C_cajeros.length){ el.innerHTML='<div class="empty" style="grid-column:1/-1">Sin cajeros configurados.</div>'; }
-  else { el.innerHTML=C_cajeros.map(c=>`<div class="seller-card" onclick="goPin('__cajero__${c.name}')"><div class="sc-name">${c.name}</div><div class="sc-sub">Ingresar con PIN</div></div>`).join(''); }
-  document.getElementById('sc-cajero-select').classList.remove('hidden');
-  document.getElementById('logout-btn').classList.add('hidden');
-}
-
-// extend showSc to include cajero screens
-const _origShowSc=showSc;
-function showSc(id){
-  ['sc-select','sc-pin','sc-vendedor','sc-supervisor','sc-cajero','sc-cajero-select'].forEach(s=>
-    document.getElementById(s).classList.toggle('hidden',s!==id)
-  );
-  document.getElementById('logout-btn').classList.toggle('hidden',id==='sc-select'||id==='sc-pin'||id==='sc-cajero-select');
-}
-
-// extend checkPin for cajero
-const _origCheckPin=checkPin;
-async function checkPin(){
-  if(pendingSeller&&pendingSeller.startsWith('__cajero__')){
-    const name=pendingSeller.replace('__cajero__','');
-    const cajero=C_cajeros.find(c=>c.name===name);
-    if(!cajero||!cajero.pin){ document.getElementById('pin-error').textContent='Sin PIN asignado.'; pinBuf=''; dots(); return; }
-    if(pinBuf===cajero.pin){
-      curCajero=name;
-      showSc('sc-cajero');
-      document.getElementById('logout-btn').classList.remove('hidden');
-      await renderCajero();
-    } else { document.getElementById('pin-error').textContent='PIN incorrecto'; pinBuf=''; dots(); }
-    return;
-  }
-  await _origCheckPin();
-}
-
-// extend logout
-const _origLogout=logout;
-function logout(){
-  if(curCajero){ curCajero=null; cajStopTimer(); showSelect(); return; }
-  _origLogout();
 }
 
 async function renderCajero(){
